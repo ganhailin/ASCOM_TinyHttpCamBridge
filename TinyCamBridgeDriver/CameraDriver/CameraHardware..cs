@@ -305,7 +305,7 @@ namespace ASCOM.TLTinylibHttpCam01.Camera
                     else if (hinit.bayer == "RGB")
                         sensorType = SensorType.Color;
                     maxADU = hinit.adu;
-                    CameraName = "TinyCam2HttpBridge";
+                    CameraName = hinit.name;
                     initInfo = hinit;
 
                     cameraNumX = ccdWidth; // Initialise variables to hold values required for functionality tested by Conform
@@ -351,7 +351,7 @@ namespace ASCOM.TLTinylibHttpCam01.Camera
             {
                 Version version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
                 // TODO customise this driver description if required
-                string driverInfo = $"Information about the driver itself. Version: {version.Major}.{version.Minor}";
+                string driverInfo = $"{CameraName}, Bridge Version: {version.Major}.{version.Minor}";
                 LogMessage("DriverInfo Get", driverInfo);
                 return driverInfo;
             }
@@ -417,10 +417,12 @@ namespace ASCOM.TLTinylibHttpCam01.Camera
         static private int cameraStartX = 0;
         static private int cameraStartY = 0;
         private static short cameraGain = 0;
+        private static int cameraOffset = 0;
         static private DateTime exposureStart = DateTime.MinValue;
         static private double cameraLastExposureDuration = 0.0;
         static private bool cameraImageReady = false;
         static private int[,] cameraImageArray;
+        static private int[,] cameraImageArrayRaw;
         static private object[,] cameraImageArrayVariant;
 
         /// <summary>
@@ -905,7 +907,14 @@ namespace ASCOM.TLTinylibHttpCam01.Camera
                     throw new ASCOM.InvalidOperationException("Call to ImageArray before the first image has been taken!");
                 }
 
-                //cameraImageArray = new int[cameraNumX, cameraNumY];
+                cameraImageArray = new int[cameraNumX, cameraNumY];
+                for (int i = 0; i < cameraNumX; i++)
+                {
+                    for (int j = 0; j < cameraNumY; j++)
+                    {
+                        cameraImageArray[i, j] = cameraImageArrayRaw[i+cameraStartX, j+cameraStartY];
+                    }
+                }
                 return cameraImageArray;
             }
         }
@@ -924,13 +933,12 @@ namespace ASCOM.TLTinylibHttpCam01.Camera
                     throw new ASCOM.InvalidOperationException("Call to ImageArrayVariant before the first image has been taken!");
                 }
                 cameraImageArrayVariant = new object[cameraNumX, cameraNumY];
-                for (int i = 0; i < cameraImageArray.GetLength(1); i++)
+                for (int i = 0; i < cameraNumX; i++)
                 {
-                    for (int j = 0; j < cameraImageArray.GetLength(0); j++)
+                    for (int j = 0; j < cameraNumY; j++)
                     {
-                        cameraImageArrayVariant[j, i] = cameraImageArray[j, i];
+                        cameraImageArrayVariant[i, j] = cameraImageArrayRaw[i + cameraStartX, j + cameraStartY];
                     }
-
                 }
 
                 return cameraImageArrayVariant;
@@ -1091,13 +1099,17 @@ namespace ASCOM.TLTinylibHttpCam01.Camera
         {
             get
             {
-                LogMessage("Offset Get", "Not implemented");
-                throw new PropertyNotImplementedException("Offset", false);
+                LogMessage("Offset Get", $"{cameraOffset}");
+                return cameraOffset;
+                //LogMessage("Offset Get", "Not implemented");
+                //throw new PropertyNotImplementedException("Offset", false);
             }
             set
             {
-                LogMessage("Offset Set", "Not implemented");
-                throw new PropertyNotImplementedException("Offset", true);
+                cameraOffset = value;
+                LogMessage("Offset Set", $"{cameraOffset}");
+                //LogMessage("Offset Set", "Not implemented");
+                //throw new PropertyNotImplementedException("Offset", true);
             }
         }
 
@@ -1109,8 +1121,10 @@ namespace ASCOM.TLTinylibHttpCam01.Camera
         {
             get
             {
-                LogMessage("OffsetMax Get", "Not implemented");
-                throw new PropertyNotImplementedException("OffsetMax", false);
+                LogMessage("OffsetMax Get", $"{initInfo.offset_max}");
+                return initInfo.offset_max;
+                //LogMessage("OffsetMax Get", "Not implemented");
+                //throw new PropertyNotImplementedException("OffsetMax", false);
             }
         }
 
@@ -1122,8 +1136,10 @@ namespace ASCOM.TLTinylibHttpCam01.Camera
         {
             get
             {
-                LogMessage("OffsetMin Get", "Not implemented");
-                throw new PropertyNotImplementedException("OffsetMin", true);
+                LogMessage("OffsetMin Get", $"{initInfo.offset_min}");
+                return initInfo.offset_min;
+                //LogMessage("OffsetMin Get", "Not implemented");
+                //throw new PropertyNotImplementedException("OffsetMin", true);
             }
         }
 
@@ -1237,8 +1253,10 @@ namespace ASCOM.TLTinylibHttpCam01.Camera
         {
             get
             {
-                LogMessage("SensorName Get", "Not implemented");
-                throw new PropertyNotImplementedException("SensorName", false);
+                LogMessage("SensorName Get", $"{initInfo.name}");
+                return initInfo.name;
+                //LogMessage("SensorName Get", "Not implemented");
+                //throw new PropertyNotImplementedException("SensorName", false);
             }
         }
 
@@ -1303,9 +1321,9 @@ namespace ASCOM.TLTinylibHttpCam01.Camera
             //byte[] data = Convert.FromBase64String(himg.data);
             byte[] data = imgdata;
             int n = 0;
-            cameraNumX = himg.width;
-            cameraNumY = himg.height;
-            cameraImageArray = new int[cameraNumX, cameraNumY];
+            //cameraNumX = himg.width;
+            //cameraNumY = himg.height;
+            cameraImageArrayRaw = new int[himg.width, himg.height];
             if (himg.bayer.Contains("BGGR12") ||
                 himg.bayer.Contains("RGGB12") ||
                 himg.bayer.Contains("GRBG12") ||
@@ -1314,8 +1332,8 @@ namespace ASCOM.TLTinylibHttpCam01.Camera
                 for (int h = 0; h < himg.height; h++)
                 for (int w = 0; w < himg.width; w += 2)
                 {
-                    cameraImageArray[w, h] = (((int)data[n]) << 4) + (((int)data[n + 2] & 0x0f));
-                    cameraImageArray[w + 1, h] = (((int)data[n + 1]) << 4) + (((int)data[n + 2] & 0xf0) >> 4);
+                    cameraImageArrayRaw[w, h] = (((int)data[n]) << 4) + (((int)data[n + 2] & 0x0f));
+                    cameraImageArrayRaw[w + 1, h] = (((int)data[n + 1]) << 4) + (((int)data[n + 2] & 0xf0) >> 4);
                     n += 3;
                 }
             }
@@ -1325,7 +1343,7 @@ namespace ASCOM.TLTinylibHttpCam01.Camera
                 for (int h = 0; h < himg.height; h++)
                 for (int w = 0; w < himg.width; w++)
                 {
-                    cameraImageArray[w, h] = BitConverter.ToUInt16(data, n);
+                    cameraImageArrayRaw[w, h] = BitConverter.ToUInt16(data, n);
                     n += 2;
                 }
             }
@@ -1351,7 +1369,7 @@ namespace ASCOM.TLTinylibHttpCam01.Camera
             cameraLastExposureDuration = Duration;
             exposureStart = DateTime.Now;
             WebClient client = new WebClient();
-            string response = client.DownloadString(String.Format("http://{0}:{1}/expose?time={2}&gain={3}", ipAddr, httpPort, (int)(Duration * 1000000), cameraGain));
+            string response = client.DownloadString(String.Format("http://{0}:{1}/expose?time={2}&gain={3}&offset={4}", ipAddr, httpPort, (int)(Duration * 1000000), cameraGain, cameraOffset));
 
             readoutthread = new Thread(new ThreadStart(readthread));
             readoutthread.Start();
